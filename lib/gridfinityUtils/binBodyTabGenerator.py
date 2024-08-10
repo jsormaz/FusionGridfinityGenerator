@@ -42,18 +42,17 @@ def createGridfinityBinBodyTab(
     tabTopEdgeHeight = input.origin.z - input.topClearance
 
     h1 = input.width * math.sin(math.radians(input.labelAngle))
-    w = input.width * math.cos(math.radians(input.labelAngle))
+    hr1 = BIN_TAB_EDGE_FILLET_RADIUS * math.sin(math.radians(90-input.labelAngle))
+    wr = BIN_TAB_EDGE_FILLET_RADIUS*(1 - math.cos(math.radians(90-input.labelAngle)))
+    w = input.width * math.cos(math.radians(input.labelAngle)) + wr
     h2 = w / math.tan(input.overhangAngle)
-    h = h1 + h2
+    hr2 = BIN_TAB_EDGE_FILLET_RADIUS * math.sin(input.overhangAngle)
+    h = h1 + h2 + hr1 + hr2
 
-    logging.info(input.labelAngle)
-    logging.info(math.degrees(input.overhangAngle ))
-
-    pt1 = adsk.core.Point3D.create(x_position, input.origin.y + BIN_WALL_THICKNESS, tabTopEdgeHeight)
-    pt2 = adsk.core.Point3D.create(x_position, input.origin.y + BIN_WALL_THICKNESS, tabTopEdgeHeight - h)
+    pt1 = adsk.core.Point3D.create(x_position, input.origin.y + BIN_WALL_THICKNESS, tabTopEdgeHeight + BIN_WALL_THICKNESS/math.tan(math.radians(input.labelAngle)))
+    pt2 = adsk.core.Point3D.create(x_position, input.origin.y + BIN_WALL_THICKNESS, tabTopEdgeHeight - h - BIN_WALL_THICKNESS/math.tan(input.overhangAngle))
     pt3 = adsk.core.Point3D.create(x_position, input.origin.y - w, tabTopEdgeHeight - h1)
-    logging.info(input.labelAngle)
-    logging.info(input.overhangAngle)
+    # pt4 = adsk.core.Point3D.create(x_position, input.origin.y - w, tabTopEdgeHeight - h1 - hr1-hr2)
 
     line1 = tabSketchLine.addByTwoPoints(
         tabSketch.modelToSketchSpace(pt1),
@@ -80,8 +79,6 @@ def createGridfinityBinBodyTab(
     constraints.addCoincident(line2.endSketchPoint, line3.endSketchPoint)
     constraints.addCoincident(line1.endSketchPoint, line3.startSketchPoint)
 
-    # tabSketchArcs = tabSketch.sketchCurves.sketchArcs
-    # tabSketchArcs.addFillet(line2, pt2, line3, pt2, BIN_TAB_EDGE_FILLET_RADIUS)
     line2.startSketchPoint.isFixed = True
     tabSizeDim = dimensions.addDistanceDimension(
         line2.startSketchPoint,
@@ -92,7 +89,7 @@ def createGridfinityBinBodyTab(
         )
     # tabSizeDim.value = input.width
             
-    labelAngleDim = dimensions.addAngularDimension(
+    dimensions.addAngularDimension(
         line1,
         line2,
         adsk.core.Point3D.create(x_position, (pt2.y + pt3.y) / 2, (pt2.z + pt3.z) / 2),
@@ -100,7 +97,11 @@ def createGridfinityBinBodyTab(
         )
     # labelAngleDim.value = math.radians(input.labelAngle)
 
-    labelOverhangAngleDim = dimensions.addAngularDimension(
+    
+    # tabSketchArcs = tabSketch.sketchCurves.sketchArcs
+    # tabSketchArcs.addFillet(line2, line2.endSketchPoint, line3, line3.endSketchPoint, BIN_TAB_EDGE_FILLET_RADIUS)
+
+    dimensions.addAngularDimension(
         line1,
         line3,
         adsk.core.Point3D.create(x_position, (pt1.y + pt3.y) / 2, (pt1.z + pt3.z) / 2),
