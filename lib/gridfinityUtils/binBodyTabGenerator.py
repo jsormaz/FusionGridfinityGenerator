@@ -41,18 +41,41 @@ def createGridfinityBinBodyTab(
     tabSketchLine = tabSketch.sketchCurves.sketchLines
     tabTopEdgeHeight = input.origin.z - input.topClearance
 
-    h1 = input.width * math.sin(math.radians(input.labelAngle))
-    hr1 = BIN_TAB_EDGE_FILLET_RADIUS * math.sin(math.radians(90-input.labelAngle))
-    wr = BIN_TAB_EDGE_FILLET_RADIUS*(1 - math.cos(math.radians(90-input.labelAngle)))
-    w = input.width * math.cos(math.radians(input.labelAngle)) + wr
-    h2 = w / math.tan(input.overhangAngle)
+    h1 = input.width * math.sin(input.labelAngle)
+    hr1 = BIN_TAB_EDGE_FILLET_RADIUS * math.cos(input.labelAngle)
+    wr1 = BIN_TAB_EDGE_FILLET_RADIUS*(1 - math.sin(input.labelAngle))
+    wr2 = BIN_TAB_EDGE_FILLET_RADIUS*(1 - math.cos(input.overhangAngle))
+    w = input.width * math.cos(input.labelAngle)
     hr2 = BIN_TAB_EDGE_FILLET_RADIUS * math.sin(input.overhangAngle)
+    h2 = w / math.tan(input.overhangAngle)
     h = h1 + h2 + hr1 + hr2
-
-    pt1 = adsk.core.Point3D.create(x_position, input.origin.y + BIN_WALL_THICKNESS, tabTopEdgeHeight + BIN_WALL_THICKNESS/math.tan(math.radians(input.labelAngle)))
-    pt2 = adsk.core.Point3D.create(x_position, input.origin.y + BIN_WALL_THICKNESS, tabTopEdgeHeight - h - BIN_WALL_THICKNESS/math.tan(input.overhangAngle))
-    pt3 = adsk.core.Point3D.create(x_position, input.origin.y - w, tabTopEdgeHeight - h1)
-    # pt4 = adsk.core.Point3D.create(x_position, input.origin.y - w, tabTopEdgeHeight - h1 - hr1-hr2)
+    logging.info(input.labelAngle)
+    pt1 = adsk.core.Point3D.create(
+        x=x_position, 
+        y=input.origin.y + BIN_WALL_THICKNESS, 
+        z=tabTopEdgeHeight + BIN_WALL_THICKNESS*math.tan(input.labelAngle)
+        )
+    pt2 = adsk.core.Point3D.create(
+        x=x_position, 
+        y=input.origin.y + BIN_WALL_THICKNESS, 
+        z=tabTopEdgeHeight - h - BIN_WALL_THICKNESS*math.tan(input.overhangAngle)
+        )
+    pt3 = adsk.core.Point3D.create(
+        x=x_position, 
+        y=input.origin.y - w,
+        z=tabTopEdgeHeight - h1
+        )
+    pt4 = adsk.core.Point3D.create(
+        x=x_position, 
+        y=input.origin.y - w -wr1 + wr2, 
+        z=tabTopEdgeHeight - h1 - hr1 - hr2
+        )
+    
+    fillet_center_pt = adsk.core.Point3D.create(
+        x=x_position, 
+        y=input.origin.y - w - wr1 + const.BIN_TAB_EDGE_FILLET_RADIUS, 
+        z=tabTopEdgeHeight - h1 - hr1
+        )
 
     line1 = tabSketchLine.addByTwoPoints(
         tabSketch.modelToSketchSpace(pt1),
@@ -64,21 +87,12 @@ def createGridfinityBinBodyTab(
     )
     line3 = tabSketchLine.addByTwoPoints(
         tabSketch.modelToSketchSpace(pt2),
-        tabSketch.modelToSketchSpace(pt3),
+        tabSketch.modelToSketchSpace(pt4),
     )
 
     constraints: adsk.fusion.GeometricConstraints = tabSketch.geometricConstraints
     dimensions: adsk.fusion.SketchDimensions = tabSketch.sketchDimensions
-
-    # horizontal/vertical relative to local sketch XY coordinates
-    constraints.addHorizontal(line1)
     
-    
-    # constraints.addVertical(line2)
-    constraints.addCoincident(line1.startSketchPoint, line2.startSketchPoint)
-    constraints.addCoincident(line2.endSketchPoint, line3.endSketchPoint)
-    constraints.addCoincident(line1.endSketchPoint, line3.startSketchPoint)
-
     line2.startSketchPoint.isFixed = True
     tabSizeDim = dimensions.addDistanceDimension(
         line2.startSketchPoint,
@@ -87,6 +101,16 @@ def createGridfinityBinBodyTab(
         line2.endSketchPoint.geometry,
         True
         )
+    # horizontal/vertical relative to local sketch XY coordinates
+    constraints.addHorizontal(line1)
+    
+    
+    # constraints.addVertical(line2)
+    constraints.addCoincident(line1.startSketchPoint, line2.startSketchPoint)
+    # constraints.addCoincident(line2.endSketchPoint, line3.endSketchPoint)
+    constraints.addCoincident(line1.endSketchPoint, line3.startSketchPoint)
+
+    
     # tabSizeDim.value = input.width
             
     dimensions.addAngularDimension(
@@ -98,17 +122,28 @@ def createGridfinityBinBodyTab(
     # labelAngleDim.value = math.radians(input.labelAngle)
 
     
-    # tabSketchArcs = tabSketch.sketchCurves.sketchArcs
-    # tabSketchArcs.addFillet(line2, line2.endSketchPoint, line3, line3.endSketchPoint, BIN_TAB_EDGE_FILLET_RADIUS)
-
     dimensions.addAngularDimension(
-        line1,
         line3,
+        line1,
         adsk.core.Point3D.create(x_position, (pt1.y + pt3.y) / 2, (pt1.z + pt3.z) / 2),
         True,
         )
-    # labelOverhangAngleDim.value = input.overhangAngle
+    
+    tabSketchArcs = tabSketch.sketchCurves.sketchArcs
+    arc1 = tabSketchArcs.addByCenterStartEnd(
+        tabSketch.modelToSketchSpace(fillet_center_pt),
+        line2.endSketchPoint,
+        line3.endSketchPoint
+    )
 
+    constraints.addTangent(arc1, line2)
+    constraints.addTangent(arc1, line3)
+
+    dimensions.addRadialDimension(
+        arc1, arc1.endSketchPoint.geometry, True
+    )
+
+    
     tabExtrudeFeature = extrudeUtils.simpleDistanceExtrude(
         tabSketch.profiles.item(0),
         adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
@@ -130,68 +165,49 @@ def createGridfinityBinBodyTab(
     # )
     # fillet.name = 'label tab fillet'
 
-    tabBodySubtract = targetComponent.features.copyPasteBodies.add(tabBody).bodies.item(0)
-    tabBodyShell = targetComponent.features.copyPasteBodies.add(tabBody).bodies.item(0)
+    if input.isTabHollow:
+        tabBodySubtract = targetComponent.features.copyPasteBodies.add(tabBody).bodies.item(0)
+        tabBodyShell = targetComponent.features.copyPasteBodies.add(tabBody).bodies.item(0)
 
-    shellFeatureEntities = adsk.core.ObjectCollection.create()
-    # shellFeatureEntities.add(tabBodyShell)
-    for face in tabBodyShell.faces:
-        if face.evaluator.getNormalAtPoint(pt1)[1].isPerpendicularTo(
-            adsk.core.Vector3D.create(pt2.x - pt1.x , pt2.y - pt1.y, pt2.z - pt1.z)
-        ) and not face.evaluator.getNormalAtPoint(pt1)[1].isParallelTo(
-            adsk.core.Vector3D.create(pt2.x - pt1.x , pt2.y - pt1.y, pt2.z - pt1.z).crossProduct(
-                adsk.core.Vector3D.create(pt3.x - pt1.x , pt3.y - pt1.y, pt3.z - pt1.z)
-            )
-        ):  
-            logging.info(face)
-            shellFeatureEntities.add(face)
-    logging.info(shellFeatureEntities)
-    logging.info(shellFeatureEntities.count)
+        shellFeatureEntities = adsk.core.ObjectCollection.create()
+        # shellFeatureEntities.add(tabBodyShell)
+        for face in tabBodyShell.faces:
+            if face.evaluator.getNormalAtPoint(pt1)[1].isPerpendicularTo(
+                adsk.core.Vector3D.create(pt2.x - pt1.x , pt2.y - pt1.y, pt2.z - pt1.z)
+            ) and not face.evaluator.getNormalAtPoint(pt1)[1].isParallelTo(
+                adsk.core.Vector3D.create(pt2.x - pt1.x , pt2.y - pt1.y, pt2.z - pt1.z).crossProduct(
+                    adsk.core.Vector3D.create(pt3.x - pt1.x , pt3.y - pt1.y, pt3.z - pt1.z)
+                )
+            ):  
+                logging.info(face)
+                shellFeatureEntities.add(face)
 
-    shellFeats = targetComponent.features.shellFeatures
+        shellFeats = targetComponent.features.shellFeatures
 
-    shellFeatureInput = shellFeats.createInput(shellFeatureEntities, False)
-    shellFeatureInput.insideThickness = adsk.core.ValueInput.createByReal(BIN_WALL_THICKNESS)
-    shellFeatureInput.shellType = adsk.fusion.ShellTypes.SharpOffsetShellType
+        shellFeatureInput = shellFeats.createInput(shellFeatureEntities, False)
+        shellFeatureInput.insideThickness = adsk.core.ValueInput.createByReal(BIN_WALL_THICKNESS)
+        shellFeatureInput.shellType = adsk.fusion.ShellTypes.SharpOffsetShellType
 
-    shellFeature = shellFeats.add(shellFeatureInput)
+        shellFeature = shellFeats.add(shellFeatureInput)
 
-    subtractCollection = adsk.core.ObjectCollection.create()
-    subtractCollection.add(tabBodyShell)
+        subtractCollection = adsk.core.ObjectCollection.create()
+        subtractCollection.add(tabBodyShell)
 
-    combineUtils.cutBody(
-        tabBodySubtract,
-        subtractCollection,
-        targetComponent
-    )
+        combineUtils.cutBody(
+            tabBodySubtract,
+            subtractCollection,
+            targetComponent
+        )
 
-    
-    subtractCollection = adsk.core.ObjectCollection.create()
-    subtractCollection.add(tabBodySubtract)
-    
-    combineInput = targetComponent.features.combineFeatures.createInput(tabBody, subtractCollection)
-    combineInput.operation = adsk.fusion.FeatureOperations.CutFeatureOperation
-    combineInput.isKeepToolBodies = True
-    targetComponent.features.combineFeatures.add(combineInput)
-    
+        
+        subtractCollection = adsk.core.ObjectCollection.create()
+        subtractCollection.add(tabBodySubtract)
+        
+        combineInput = targetComponent.features.combineFeatures.createInput(tabBody, subtractCollection)
+        combineInput.operation = adsk.fusion.FeatureOperations.CutFeatureOperation
+        combineInput.isKeepToolBodies = True
+        targetComponent.features.combineFeatures.add(combineInput)
 
-    # for face in tabBodySubtract.faces:
-    #     if face.evaluator.getNormalAtPoint(pt1)[1].isPerpendicularTo(
-    #         adsk.core.Vector3D.create(pt2.x, pt2.y, pt2.z)
-    #     ):  
-    #         offset = -BIN_WALL_THICKNESS
-    #     else:
-    #         offset = BIN_WALL_THICKNESS
-    #     offsetFaceEntities = adsk.core.ObjectCollection.create()
-    #     offsetFaceEntities.add(face)
-
-    #     offsetFaceInput = targetComponent.features.offsetFeatures.createInput(
-    #         offsetFaceEntities,
-    #         adsk.core.ValueInput.createByReal(offset),
-    #         adsk.fusion.FeatureOperations.NewBodyFeatureOperation
-    #     )
-    #     targetComponent.features.offsetFeatures.add(offsetFaceInput)
-
-   
-
-    return tabBody, tabBodySubtract
+        return tabBody, [tabBodySubtract]
+    else:
+        return tabBody, []
